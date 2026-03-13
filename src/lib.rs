@@ -15,10 +15,11 @@ pub fn main() {
 pub fn verify_stark(proof_bytes: &[u8], vk_bytes: &[u8]) -> Result<bool, JsValue> {
     let proof: ZiskProofWithPublicValues = bincode::deserialize(proof_bytes)
         .map_err(|e| JsValue::from_str(&format!("Failed to deserialize proof: {}", e)))?;
-    
-    let vadcop_proof = proof.get_vadcop_final_proof()
+
+    let vadcop_proof = proof
+        .get_vadcop_final_proof()
         .map_err(|e| JsValue::from_str(&format!("Failed to get vadcop proof: {}", e)))?;
-    
+
     let result = verify_vadcop_final_compressed(&vadcop_proof, vk_bytes);
     println!("Verification result: {:?}", result);
     Ok(result)
