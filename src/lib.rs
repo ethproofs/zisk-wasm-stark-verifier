@@ -1,62 +1,91 @@
 // WASM bindings for the ZK-STARK verifier using the ZisK library.
 //
-// The Proof / PublicValues / ProgramVK / ProofKind types below mirror the
-// bincode layout of `zisk_common` v0.17.0 so we can deserialize proofs
+// The Proof / ProofBody / PublicValues / ProgramVK types below mirror the
+// bincode layout of `zisk_common` (v0.18+) so we can deserialize proofs
 // produced by zisk without pulling in zisk-common (which depends on
 // tokio/quinn and does not build for wasm32-unknown-unknown).
 use std::sync::atomic::AtomicUsize;
 
-use proofman_verifier::{verify_vadcop_final_bytes, verify_vadcop_final_compressed_bytes};
+use proofman_verifier::{verify_vadcop_final_compressed_u64, verify_vadcop_final_u64};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
 const ZISK_PUBLICS: usize = 64;
 
-#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
-enum ProofKind {
-    #[default]
-    VadcopFinal,
-    VadcopFinalMinimal,
-    Plonk,
-}
-
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 struct ProgramVK {
-    pub vk: Vec<u8>,
+    vk: Vec<u64>,
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 struct PublicValues {
     data: Vec<u8>,
     #[serde(skip)]
-    _ptr: AtomicUsize,
+    #[allow(dead_code)]
+    ptr: AtomicUsize,
 }
 
 impl PublicValues {
-    fn public_bytes(&self) -> Vec<u8> {
-        let mut bytes = vec![0u8; ZISK_PUBLICS * 8];
-        for i in 0..ZISK_PUBLICS {
-            let start = i * 4;
-            let val32 = u32::from_le_bytes([
-                self.data[start],
-                self.data[start + 1],
-                self.data[start + 2],
-                self.data[start + 3],
-            ]);
-            let val64 = val32 as u64;
-            bytes[i * 8..(i + 1) * 8].copy_from_slice(&val64.to_le_bytes());
-        }
-        bytes
+    fn public_u64(&self) -> Vec<u64> {
+        (0..ZISK_PUBLICS)
+            .map(|i| {
+                let start = i * 4;
+                u32::from_le_bytes([
+                    self.data[start],
+                    self.data[start + 1],
+                    self.data[start + 2],
+                    self.data[start + 3],
+                ]) as u64
+            })
+            .collect()
+    }
+}
+
+// PlonkVkey / PlonkVkBlob exist only so bincode can consume the right number
+// of bytes when a Plonk proof is encountered; their contents are never read.
+#[derive(Debug, Serialize, Deserialize)]
+struct PlonkVkey {
+    protocol: String,
+    curve: String,
+    n_public: u32,
+    power: u32,
+    k1: String,
+    k2: String,
+    qm: [String; 3],
+    ql: [String; 3],
+    qr: [String; 3],
+    qo: [String; 3],
+    qc: [String; 3],
+    s1: [String; 3],
+    s2: [String; 3],
+    s3: [String; 3],
+    x_2: [[String; 2]; 3],
+    w: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct PlonkVkBlob {
+    vadcop_vk: Vec<u64>,
+    plonk_vkey: PlonkVkey,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+enum ProofBody {
+    Vadcop { proof: Vec<u64>, zisk_vk: Vec<u64>, minimal: bool },
+    Plonk { proof_bytes: Vec<u8>, plonk_vk: Box<PlonkVkBlob> },
+}
+
+impl Default for ProofBody {
+    fn default() -> Self {
+        ProofBody::Vadcop { proof: Vec::new(), zisk_vk: Vec::new(), minimal: false }
     }
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 struct Proof {
-    proof_kind: ProofKind,
-    proof_bytes: Vec<u8>,
+    body: ProofBody,
     publics: PublicValues,
     program_vk: ProgramVK,
-    zisk_vk: Vec<u8>,
 }
 
 #[wasm_bindgen(start)]
@@ -66,26 +95,43 @@ pub fn main() {
 
 #[wasm_bindgen]
 pub fn verify_stark(proof_bytes: &[u8], vk_bytes: &[u8]) -> Result<bool, JsValue> {
-    let proof: Proof = bincode::deserialize(proof_bytes)
-        .map_err(|e| JsValue::from_str(&format!("failed to deserialize proof: {e}")))?;
+    let (proof, _): (Proof, usize) =
+        bincode::serde::decode_from_slice(proof_bytes, bincode::config::standard())
+            .map_err(|e| JsValue::from_str(&format!("failed to deserialize proof: {e}")))?;
 
-    // Public input layout expected by proofman-verifier::verify_*_bytes:
-    //   [n_publics_u64_count: 8 bytes LE][publics][proof_bytes]
-    let mut pubs = proof.program_vk.vk.clone();
-    pubs.extend(proof.publics.public_bytes());
-
-    let mut blob = Vec::with_capacity(8 + pubs.len() + proof.proof_bytes.len());
-    blob.extend_from_slice(&((pubs.len() / 8) as u64).to_le_bytes());
-    blob.extend_from_slice(&pubs);
-    blob.extend_from_slice(&proof.proof_bytes);
-
-    let ok = match proof.proof_kind {
-        ProofKind::VadcopFinal => verify_vadcop_final_bytes(&blob, vk_bytes),
-        ProofKind::VadcopFinalMinimal => verify_vadcop_final_compressed_bytes(&blob, vk_bytes),
-        ProofKind::Plonk => {
+    let (vadcop_proof, minimal) = match &proof.body {
+        ProofBody::Vadcop { proof, minimal, .. } => (proof.as_slice(), *minimal),
+        ProofBody::Plonk { .. } => {
             return Err(JsValue::from_str("Plonk proofs are not supported in the wasm verifier"));
         }
     };
 
+    // Layout expected by verify_*_u64:
+    //   [n_publics: u64][program_vk: u64...][publics: u64...][proof: u64...]
+    let publics = proof.publics.public_u64();
+    let n_publics = (proof.program_vk.vk.len() + publics.len()) as u64;
+
+    let mut blob =
+        Vec::with_capacity(1 + proof.program_vk.vk.len() + publics.len() + vadcop_proof.len());
+    blob.push(n_publics);
+    blob.extend_from_slice(&proof.program_vk.vk);
+    blob.extend_from_slice(&publics);
+    blob.extend_from_slice(vadcop_proof);
+
+    let vk = bytes_to_u64_le(vk_bytes);
+
+    let ok = if minimal {
+        verify_vadcop_final_compressed_u64(&blob, &vk)
+    } else {
+        verify_vadcop_final_u64(&blob, &vk)
+    };
+
     Ok(ok)
+}
+
+fn bytes_to_u64_le(bytes: &[u8]) -> Vec<u64> {
+    bytes
+        .chunks_exact(8)
+        .map(|c| u64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]))
+        .collect()
 }
