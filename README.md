@@ -4,17 +4,7 @@ WebAssembly bindings for the ZisK STARK verifier.
 
 ## Overview
 
-This module builds the `verify_stark` function from `zisk-verifier` (ZisK `v1.1.0-alpha`) into WebAssembly, enabling STARK proof verification to run directly in both web browsers and Node.js environments.
-
-## Usage
-
-> **Breaking change in 0.2.0.** `verify_stark` now verifies against the `vkBytes`
-> you pass in. Earlier versions ignored that argument and used the verification key
-> embedded in the proof, which only proves the proof is internally consistent — not
-> that it came from the expected program. Callers must now pass the 32-byte key from
-> the trusted setup (`vadcop_final_compressed.verkey.bin` for a minimal proof,
-> otherwise `vadcop_final.verkey.bin`). A key of any other length throws, and a key
-> that doesn't match returns `false`.
+This module builds the `verify_stark` function from `zisk-verifier` (ZisK `v1.2.0-alpha`) into WebAssembly, enabling STARK proof verification to run directly in both web browsers and Node.js environments.
 
 ### Installation
 
