@@ -25,7 +25,7 @@
     "build:node": "wasm-pack build --target nodejs --out-dir pkg-node && rm -f pkg-node/.gitignore",
     "build:web": "wasm-pack build --target web --out-dir pkg-web && rm -f pkg-web/.gitignore",
     "build:all": "npm run build && npm run build:node && npm run build:web",
-    "test": "npm run build && node test-serve.mjs",
+    "test": "npm run build:web && node test-serve.mjs",
     "test:node": "npm run build:node && node test-node.mjs",
     "prepublishOnly": "test -f pkg/zisk_wasm_stark_verifier_bg.wasm || { echo 'ERROR: pkg/ is not built - run npm run build first'; exit 1; }"
   },

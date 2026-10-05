@@ -103,7 +103,7 @@ server.listen(PORT, () => {
     `   http://localhost:${PORT}/                     - Browser example`
   );
   console.log(
-    `   http://localhost:${PORT}/pkg/                 - WASM package files`
+    `   http://localhost:${PORT}/pkg-web/             - WASM package files`
   );
   console.log(`   http://localhost:${PORT}/proofs/              - Proof files`);
   console.log(
