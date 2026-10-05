@@ -3,19 +3,21 @@
   "version": "0.4.0",
   "description": "WASM wrapper for ZisK STARK verifier - verify STARK proofs in browsers and Node.js",
   "type": "module",
-  "main": "pkg/zisk_wasm_stark_verifier.js",
+  "main": "pkg-node/zisk_wasm_stark_verifier.js",
   "module": "pkg/zisk_wasm_stark_verifier.js",
   "types": "pkg/zisk_wasm_stark_verifier.d.ts",
   "exports": {
     ".": {
       "types": "./pkg/zisk_wasm_stark_verifier.d.ts",
-      "import": "./pkg/zisk_wasm_stark_verifier.js",
-      "require": "./pkg/zisk_wasm_stark_verifier.js"
+      "node": "./pkg-node/zisk_wasm_stark_verifier.js",
+      "default": "./pkg/zisk_wasm_stark_verifier.js"
     },
-    "./pkg/*": "./pkg/*"
+    "./pkg/*": "./pkg/*",
+    "./pkg-node/*": "./pkg-node/*"
   },
   "files": [
     "pkg/",
+    "pkg-node/",
     "README.md",
     "test-browser.html",
     "test-serve.mjs"
@@ -25,9 +27,10 @@
     "build:node": "wasm-pack build --target nodejs --out-dir pkg-node && rm -f pkg-node/.gitignore",
     "build:web": "wasm-pack build --target web --out-dir pkg-web && rm -f pkg-web/.gitignore",
     "build:all": "npm run build && npm run build:node && npm run build:web",
-    "test": "npm run build && node test-serve.mjs",
+    "build:publish": "npm run build && npm run build:node",
+    "test": "npm run build:web && node test-serve.mjs",
     "test:node": "npm run build:node && node test-node.mjs",
-    "prepublishOnly": "test -f pkg/zisk_wasm_stark_verifier_bg.wasm || { echo 'ERROR: pkg/ is not built - run npm run build first'; exit 1; }"
+    "prepublishOnly": "for d in pkg pkg-node; do test -f $d/zisk_wasm_stark_verifier_bg.wasm || { echo \"ERROR: $d/ is not built - run npm run build:publish first\"; exit 1; }; done"
   },
   "keywords": [
     "wasm",
