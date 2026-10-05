@@ -4,9 +4,7 @@ WebAssembly bindings for the ZisK STARK verifier.
 
 ## Overview
 
-This module builds the `verify_stark` function from `pil2-proofman` into WebAssembly, enabling STARK proof verification to run directly in both web browsers and Node.js environments.
-
-## Usage
+This module builds the `verify_stark` function from `zisk-verifier` (ZisK `v1.3.1-alpha`) into WebAssembly, enabling STARK proof verification to run directly in both web browsers and Node.js environments.
 
 ### Installation
 
